@@ -79,7 +79,10 @@ See the documentation for the Query class for details.
 """
 
 
-import sys, os
+from __future__ import print_function
+import os
+import sys
+
 
 def path_filter(extensions=None, exclude_paths=[]):
   """
@@ -87,9 +90,9 @@ def path_filter(extensions=None, exclude_paths=[]):
   that returns True iff the path it is given has an extension one of the
   file extensions specified in `extensions`, an array of strings.
 
-  >>> map(path_filter(extensions=['js', 'php']), ['./profile.php', './q.jjs'])
+  >>> list(map(path_filter(extensions=['js', 'php']), ['./profile.php', './q.jjs']))
   [True, False]
-  >>> map(path_filter(exclude_paths=['html']), ['./html/x.php', './lib/y.js'])
+  >>> list(map(path_filter(exclude_paths=['html']), ['./html/x.php', './lib/y.js']))
   [False, True]
   """
   def the_filter(path):
@@ -123,33 +126,33 @@ def run_interactive(query, editor=None, just_count=False):
   # Load start from bookmark, if appropriate.
   bookmark = _load_bookmark()
   if bookmark:
-    print 'Resume where you left off, at %s (y/n)? ' % str(bookmark),
+    print('Resume where you left off, at %s (y/n)? ' % str(bookmark), end=' ')
     if (_prompt(default='y') == 'y'):
       query.start_position = bookmark
 
   # Okay, enough of this foolishness of computing start and end.
   # Let's ask the user about some one line diffs!
-  print 'Searching for first instance...'
+  print('Searching for first instance...')
   suggestions = query.generate_patches()
 
   if just_count:
     for count, _ in enumerate(suggestions):
       terminal_move_to_beginning_of_line()
-      print count,
+      print(count, end=' ')
       sys.stdout.flush()  # since print statement ends in comma
-    print
+    print()
     return
 
   for patch in suggestions:
     _save_bookmark(patch.start_position)
     _ask_about_patch(patch, editor)
-    print 'Searching...'
+    print('Searching...')
   _delete_bookmark()
   if yes_to_all:
     terminal_clear()
-    print "You MUST indicate in your code review: \"codemod with 'Yes to all'\".\
+    print("You MUST indicate in your code review: \"codemod with 'Yes to all'\".\
  Make sure you and other people review the changes.\n\nWith great power, comes \
-great responsibility."
+great responsibility.")
 
 
 def line_transformation_suggestor(line_transformation, line_filter=None):
@@ -337,7 +340,7 @@ class Query:
     if not dont_use_cache and self._all_patches_cache is not None:
       return self._all_patches_cache
 
-    print 'Computing full change list (since you specified a percentage)...',
+    print('Computing full change list (since you specified a percentage)...', end=' ')
     sys.stdout.flush()  # since print statement ends in comma
 
     endless_query = self.clone()
@@ -404,7 +407,7 @@ class Query:
   @staticmethod
   def _sublist(list, starting_value, ending_value = None):
     """
-    >>> list(Query._sublist((x*x for x in xrange(1, 100)), 16, 64))
+    >>> list(Query._sublist((x*x for x in range(1, 100)), 16, 64))
     [16, 25, 36, 49, 64]
     """
     have_started = starting_value is None
@@ -441,7 +444,7 @@ class Position:
   True
   >>> p1
   Position('./hi.php', 20)
-  >>> print p1
+  >>> print(p1)
   ./hi.php:20
   >>> Position(p1)
   Position('./hi.php', 20)
@@ -482,7 +485,7 @@ class Patch:
   replace that range.
 
   >>> p = Patch(2, 4, ['X', 'Y', 'Z'], 'x.php')
-  >>> print p.render_range()
+  >>> print(p.render_range())
   x.php:2-3
   >>> p.start_position
   Position('x.php', 2)
@@ -512,7 +515,7 @@ class Patch:
       end_line_number = start_line_number + 1
     if isinstance(new_lines, str):
       new_lines = new_lines.splitlines(True)
-    for k, v in locals().iteritems():
+    for k, v in locals().items():
       setattr(self, k, v)
   def __repr__(self):
     return 'Patch()' % ', '.join(map(repr, [
@@ -550,11 +553,11 @@ def print_patch(patch, lines_to_print, file_lines=None):
   end_context_line_number   = patch.end_line_number + size_of_down_context
 
   def print_file_line(line_number):
-    print ('  %s' % file_lines[i]) if (0 <= i < len(file_lines)) else '~\n',
+    print(('  %s' % file_lines[i]) if (0 <= i < len(file_lines)) else '~\n', end=' ')
 
-  for i in xrange(start_context_line_number, patch.start_line_number):
+  for i in range(start_context_line_number, patch.start_line_number):
     print_file_line(i)
-  for i in xrange(patch.start_line_number, patch.end_line_number):
+  for i in range(patch.start_line_number, patch.end_line_number):
     if patch.new_lines is not None:
       terminal_print('- %s' % file_lines[i], color='RED')
     else:
@@ -562,7 +565,7 @@ def print_patch(patch, lines_to_print, file_lines=None):
   if patch.new_lines is not None:
     for line in patch.new_lines:
       terminal_print('+ %s' % line, color='GREEN')
-  for i in xrange(patch.end_line_number, end_context_line_number):
+  for i in range(patch.end_line_number, end_context_line_number):
     print_file_line(i)
 
 yes_to_all = False
@@ -570,22 +573,22 @@ def _ask_about_patch(patch, editor):
   global yes_to_all
   terminal_clear()
   terminal_print('%s\n' % patch.render_range(), color='WHITE')
-  print
+  print()
 
   lines = list(open(patch.path))
   print_patch(patch, terminal_get_size()[0] - 20, lines)
 
-  print
+  print()
 
   if patch.new_lines is not None:
     if not yes_to_all:
-      print 'Accept change (y = yes [default], n = no, e = edit, \
-A = yes to all, E = yes+edit)? ',
+      print('Accept change (y = yes [default], n = no, e = edit, \
+A = yes to all, E = yes+edit)? ', end=' ')
       p = _prompt('yneEA', default='y')
     else:
       p = 'y'
   else:
-    print '(e = edit [default], n = skip line)? ',
+    print('(e = edit [default], n = skip line)? ', end=' ')
     p = _prompt('en', default='e')
 
   if p in 'A':
@@ -613,7 +616,7 @@ def _prompt(letters='yn', default=None):
       return input
     if default is not None and input == '':
       return default
-    print 'Come again?'
+    print('Come again?')
 
 def _save(path, lines):
   file_w = open(path, 'w')
@@ -688,7 +691,7 @@ def terminal_get_size(default_size = (25, 80)):
     except:
       return default_size
 
-  return map(int, size)
+  return list(map(int, size))
 
 def terminal_clear():
   """
@@ -696,14 +699,14 @@ def terminal_clear():
   of newlines :-P
   """
   if not _terminal_use_capability('clear'):
-    print '\n' * 8
+    print('\n' * 8)
 
 def terminal_move_to_beginning_of_line():
   """
   Jumps the cursor back to the beginning of the current line of text.
   """
   if not _terminal_use_capability('cr'):
-    print
+    print()
 
 def _terminal_use_capability(capability_name):
   """
@@ -720,7 +723,7 @@ def _terminal_use_capability(capability_name):
 def terminal_print(text, color):
   """Print text in the specified color, without a terminating newline."""
   _terminal_set_color(color)
-  print text,
+  print(text, end=' ')
   _terminal_restore_color()
 
 def _terminal_set_color(color):
@@ -810,3 +813,4 @@ if __name__ == '__main__':
     print_through_less(__doc__.strip())
     sys.exit(2)
   run_interactive(**options)
+
