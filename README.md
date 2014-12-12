@@ -1,5 +1,6 @@
 codemod
 =======
+[![Build Status](https://travis-ci.org/shoma/codemod.svg?branch=master)](https://travis-ci.org/shoma/codemod)
 
 Overview
 --------
