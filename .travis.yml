@@ -1,0 +1,13 @@
+lnguage: python
+python:
+    - "2.6"
+    - "2.7"
+    - "3.3"
+    - "3.4"
+env:
+    - TOX_ENV=py26
+    - TOX_ENV=py27
+    - TOX_ENV=py33
+    - TOX_ENV=py34
+script:
+    - python -m doctest -v src/codemod.py
