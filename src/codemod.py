@@ -38,34 +38,6 @@ Usage: last two arguments are a regular expression to match and a substitution
        string, respectively.  Or you can omit the substitution string, and just
        be prompted on each match for whether you want to edit in your editor.
 
-Options (all optional) include:
-
-  -m
-    Have regex work over multiple lines (e.g. have dot match newlines).  By
-    default, codemod applies the regex one line at a time.
-  -d
-    The path whose descendent files are to be explored.  Defaults to current dir.
-  --start
-    A path:line_number-formatted position somewhere in the hierarchy from which
-    to being exploring, or a percentage (e.g. "--start 25%") of the way through
-    to start.  Useful if you're divvying up the substitution task across
-    multiple people.
-  --end
-    A path:line_number-formatted position somewhere in the hierarchy just
-    *before* which we should stop exploring, or a percentage of the way
-    through, just before which to end.
-  --extensions
-    A comma-delimited list of file extensions to process.
-  --editor
-    Specify an editor, e.g. "vim" or "emacs".  If omitted, defaults to $EDITOR
-    environment variable.
-  --count
-    Don't run normally.  Instead, just print out number of times places in the
-    codebase where the 'query' matches.
-  --test
-    Don't run normally.  Instead, just run the unit tests embedded in the
-    codemod library.
-
 You can also use codemod for transformations that are much more sophisticated
 than regular expression substitution.  Rather than using the command line, you
 write Python code that looks like:
@@ -172,6 +144,7 @@ def line_transformation_suggestor(line_transformation, line_filter=None):
                               returned the line itself for that line).
   """
   def suggestor(lines):
+    """line_transformation_suggestor.suggestor"""
     for line_number, line in enumerate(lines):
       if line_filter and not line_filter(line):
         continue
@@ -215,6 +188,7 @@ def multiline_regex_suggestor(regex, substitution=None):
     substitution_func = substitution
 
   def suggestor(lines):
+    """multiline_regex_suggestor.suggestor"""
     pos = 0
     while True:
       match = regex.search(''.join(lines), pos)
@@ -746,17 +720,6 @@ def _terminal_restore_color():
   import curses, sys
   sys.stdout.write(curses.tigetstr('sgr0'))
 
-def print_through_less(text):
-  """
-  Prints `text` to standard output.  If `text` wouldn't fit on one screen (as
-  measured by line count), make output scrollable a la `less`.
-  """
-  from tempfile import NamedTemporaryFile
-  tempfile = NamedTemporaryFile()
-  tempfile.write(text)
-  tempfile.flush()
-  os.system('less --no-init --quit-if-one-screen %s' % tempfile.name)
-
 
 #
 # Code to make this run as an executable from the command line.
@@ -764,53 +727,114 @@ def print_through_less(text):
 
 class _UsageException(Exception): pass
 
-def _parse_command_line():
-  import getopt, sys, re
-  try:
-    opts, remaining_args = getopt.gnu_getopt(
-        sys.argv[1:], 'md:',
-        ['start=', 'end=', 'extensions=', 'editor=', 'count', 'test'])
-  except getopt.error:
-    raise _UsageException()
-  opts = dict(opts)
 
-  if '--test' in opts:
-    import doctest
-    doctest.testmod()
-    sys.exit(0)
+def _parse_command_line(args=[]):
+    """
+    >>> print(_parse_command_line(''.split()))
+    Namespace(editor=None, end=None, extensions=None, just_count=False, regex=None, regex_multiline=False, root_directory='.', start=None, substitute=None, test=False)
+    >>> print(_parse_command_line('/sub(.*?)/'.split()))
+    Namespace(editor=None, end=None, extensions=None, just_count=False, regex='/sub(.*?)/', regex_multiline=False, root_directory='.', start=None, substitute=None, test=False)
+    >>> print(_parse_command_line('./codemod.py --test'.split()))
+    Namespace(editor=None, end=None, extensions=None, just_count=False, regex=None, regex_multiline=False, root_directory='.', start=None, substitute=None, test=True)
+    >>> print(_parse_command_line('--test'.split()))
+    Namespace(editor=None, end=None, extensions=None, just_count=False, regex=None, regex_multiline=False, root_directory='.', start=None, substitute=None, test=True)
+    >>> print(_parse_command_line('--count'.split()))
+    Namespace(editor=None, end=None, extensions=None, just_count=True, regex=None, regex_multiline=False, root_directory='.', start=None, substitute=None, test=False)
+    >>> print(_parse_command_line('-m --editor vim -d /home/src --start 25% --end 100 --extensions py,js,txt /sub(.*?)/ substr'.split()))
+    Namespace(editor='vim', end=100, extensions='py,js,txt', just_count=False, regex='/sub(.*?)/', regex_multiline=True, root_directory='/home/src', start='25%', substitute='substr', test=False)
+    """
+    import os
+    if __file__.endswith('pyc'):
+        filename = __file__[:-1]
+    else:
+        filename = __file__
+    if args and os.path.basename(filename) in args[0]:
+        args = args[1:]
+    parser = _create_opt_parser()
+    return parser.parse_args(args)
 
-  query_options = {}
-  if len(remaining_args) in [1, 2]:
-    query_options['suggestor'] = (
-     (multiline_regex_suggestor if '-m' in opts else regex_suggestor)
-     (*remaining_args)  # remaining_args is [regex] or [regex, substitution].
+
+def _create_opt_parser():
+    """
+    >>> parser = _create_opt_parser()
+    >>> parser.formatter_class
+    <class 'argparse.RawDescriptionHelpFormatter'>
+    >>> parser.conflict_handler
+    'error'
+    >>> parser.add_help
+    True
+    """
+    import argparse
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-  else:
-    raise _UsageException()
-  if '--start' in opts:
-    query_options['start'] = opts['--start']
-  if '--end' in opts:
-    query_options['end'] = opts['--end']
-  if '-d' in opts:
-    query_options['root_directory'] = opts['-d']
-  if '--extensions' in opts:
-    query_options['path_filter'] = (
-        path_filter(extensions=opts['--extensions'].split(',')))
+    parser.add_argument('-m', action='store_true', dest='regex_multiline',
+        help="""Have regex work over multiple lines (e.g. have dot match newlines).  By default, codemod applies the regex one line at a time.""")
+    parser.add_argument('-d', dest='root_directory', action='store', type=str, default='.',
+        help="""The path whose descendent files are to be explored.  Defaults to current dir.""")
+    parser.add_argument('--start', action='store', type=str,
+        help="""A path:line_number-formatted position somewhere in the hierarchy from which
+        to being exploring, or a percentage (e.g. "--start 25%%") of the way through
+        to start.  Useful if you're divvying up the substitution task across multiple people.""")
+    parser.add_argument('--end', action='store', type=int,
+        help="""A path:line_number-formatted position somewhere in the hierarchy just
+        *before* which we should stop exploring, or a percentage of the way
+        through, just before which to end."""),
+    parser.add_argument('--extensions', action='store',
+        help="""A comma-delimited list of file extensions to process.""")
+    parser.add_argument('--editor', action='store', type=str,
+        help="""Specify an editor, e.g. "vim" or "emacs".  If omitted, defaults to $EDITOR environment variable.""")
+    parser.add_argument('--count', action='store_true', dest='just_count',
+        help="""Don't run normally.  Instead, just print out number of times places in the codebase where the 'query' matches.""")
+    parser.add_argument('--test', action='store_true',
+        help="""Don't run normally.  Instead, just run the unit tests embedded in the codemod library.""")
+    parser.add_argument('regex', action='store', type=str, nargs='?',
+        help="""A regular expression to match.""")
+    parser.add_argument('substitute', action='store', type=str, default=None, nargs='?',
+        help="""Substitution string. If omit this, just be prompted on each match for whether you want to edit in your editor.""")
+    return parser
 
-  options = {}
-  options['query'] = Query(**query_options)
-  if '--editor' in opts:
-    options['editor'] = opts['--editor']
-  if '--count' in opts:
-    options['just_count'] = True
 
-  return options
+def _query_options(options):
+    """
+    >>> import argparse
+    >>> q = _query_options(argparse.Namespace(end=None, extensions='py,js', regex='/abc/', regex_multiline=True, root_directory='.', start=None, substitute=None))
+    >>> q.get('suggestor').__doc__
+    'multiline_regex_suggestor.suggestor'
+    >>> q = _query_options(argparse.Namespace(end=None, extensions='py,js', regex='/abc/', regex_multiline=False, root_directory='.', start=None, substitute=None))
+    >>> q.get('suggestor').__doc__
+    'line_transformation_suggestor.suggestor'
+    """
+    query_options = {}
+    if not options.regex:
+        raise _UsageException()
+    query_options['suggestor'] = (
+        (multiline_regex_suggestor if options.regex_multiline else regex_suggestor)
+        (*[options.regex, options.substitute])
+    )
+    if options.start:
+        query_options['start'] = options.start
+    if options.end:
+        query_options['end'] = options.end
+    query_options['root_directory'] = options.root_directory
+    if options.extensions:
+        query_options['path_filter'] = path_filter(extensions=options.extensions.split(','))
+    return query_options
+
 
 if __name__ == '__main__':
+  import sys
   try:
-    options = _parse_command_line()
+    options = _parse_command_line(sys.argv)
+    if options.test:
+      import doctest
+      doctest.testmod(verbose=True)
+      sys.exit(0)
+    query_options = _query_options(options)
+    query = Query(**query_options)
   except _UsageException:
-    print_through_less(__doc__.strip())
+    _create_opt_parser().print_help()
     sys.exit(2)
-  run_interactive(**options)
+  run_interactive(query, editor=options.editor, just_count=options.just_count)
 
